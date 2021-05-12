@@ -18,6 +18,12 @@ See [Set up Forge](https://developer.atlassian.com/platform/forge/set-up-forge/)
 forge register
 ```
 
+- Install dependencies at root directoy 
+
+```
+npm install
+```
+
 ### Frontend
 
 - Change into the frontend directory by running:
