@@ -1,184 +1,217 @@
-import React, { useEffect, useState, Fragment } from 'react';
-import { invoke } from '@forge/bridge';
-
-// Atlaskit
-import { LoadingButton as Button } from '@atlaskit/button';
-import { Checkbox } from '@atlaskit/checkbox';
-import CloseIcon from '@atlaskit/icon/glyph/editor/close';
-import TrashIcon from '@atlaskit/icon/glyph/editor/remove';
-import Textfield from '@atlaskit/textfield';
-import Lozenge from '@atlaskit/lozenge';
-import Spinner from '@atlaskit/spinner';
-
-// Custom Styles
+import React from "react";
+import api from "@forge/api";
+import ForgeUI, {
+  Button,
+  Fragment,
+  IssuePanel,
+  IssuePanelAction,
+  render,
+  useEffect,
+  useProductContext,
+  useState,
+  useAction,
+} from "@forge/ui";
+import ChangelogFieldAdmin from "./components/AddCustomFieldButton";
 import {
-  Card, Row, Icon, IconContainer, Status, SummaryActions, SummaryCount, SummaryFooter,
-  ScrollContainer, Form, LoadingContainer
-} from './Styles';
+  getFieldData,
+  getChangeLogsFieldData,
+  getIssueData,
+} from "./Operations";
+
+import Changes from "./components/Changes/Changes";
 
 function App() {
-  const [todos, setTodos] = useState(null);
-  const [input, setInput] = useState('');
-  const [isFetched, setIsFetched] = useState(false);
-  const [isDeleteAllShowing, setDeleteAllShowing] = useState(false);
-  const [isDeletingAll, setDeletingAll] = useState(false);
+  const context = useProductContext();
 
-  if (!isFetched) {
-    setIsFetched(true);
-    invoke('get-all').then(setTodos);
-  }
+  const [fieldData] = useAction(
+    (value) => value,
+    async () => {
+      return await getFieldData();
+    }
+  );
+  const [initialChangeLogsFieldData] = useAction(
+    (value) => value,
+    () => {
+      return getChangeLogsFieldData(fieldData);
+    }
+  );
+  const [ChangeLogsFieldData, setChangeLogsFieldData] = useState(
+    initialChangeLogsFieldData
+  );
 
-  const createTodo = async (label) => {
-    const newTodoList = [...todos, { label, isChecked: false, isSaving: true }];
+  const [issueData] = useAction(
+    (value) => value,
+    async () => {
+      return await getIssueData(context);
+    }
+  );
+  const [Data, setData] = useState([]);
 
-    setTodos(newTodoList);
-  }
-
-  const toggleTodo = (id) => {
-    setTodos(
-      todos.map(todo => {
-        if (todo.id === id) {
-          return { ...todo, isChecked: !todo.isChecked, isSaving: true };
+  useEffect(async () => {
+    const response = await api
+      .asUser()
+      .requestJira(
+        `/rest/api/3/issue/${context.platformContext.issueId}/changelog`,
+        {
+          headers: {
+            Accept: "application/json",
+          },
         }
-        return todo;
-      })
-    )
-  }
+      );
 
-  const deleteTodo = (id) => {
-    setTodos(
-      todos.map(todo => {
-        if (todo.id === id) {
-          return { ...todo, isDeleting: true };
+    console.log(`Response: ${response.status} ${response.statusText}`);
+    const data = await response.json();
+    setData(data.values);
+  }, []);
+
+  const exportData = async () => {
+    const field_response = await api
+      .asApp()
+      .requestJira(`/rest/api/3/field/${ChangeLogsFieldData.id}/context`, {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+    console.log(
+      `Response: ${field_response.status} ${field_response.statusText}`
+    );
+    const data = await field_response.json();
+
+    const options_response = await api
+      .asApp()
+      .requestJira(
+        `/rest/api/3/field/${ChangeLogsFieldData.id}/context/${data.values[0].id}/option`,
+        {
+          headers: {
+            Accept: "application/json",
+          },
         }
-        return todo;
-      })
-    )
-  }
+      );
 
-  const deleteAllTodos = async () => {
-    setDeletingAll(true);
+    console.log(
+      `Response: ${options_response.status} ${options_response.statusText}`
+    );
+    const CF_options = await options_response.json();
 
-    await invoke('delete-all');
+    const payload = {
+      options: [],
+    };
+    for (const change of Data) {
+      let flag = 0;
+      CF_options.values.map((option) => {
+        option.value ===
+        change.id +
+          " " +
+          change.author.displayName +
+          " " +
+          change.created.split("T")[0].split("-")[2] +
+          "/" +
+          change.created.split("T")[0].split("-")[1] +
+          "/" +
+          change.created.split("T")[0].split("-")[0] +
+          " " +
+          change.created.split("T")[1].split(".")[0]
+          ? (flag = 1)
+          : null;
+      });
+      if (flag === 0) {
+        payload.options.push({
+          value:
+            change.id +
+            " " +
+            change.author.displayName +
+            " " +
+            change.created.split("T")[0].split("-")[2] +
+            "/" +
+            change.created.split("T")[0].split("-")[1] +
+            "/" +
+            change.created.split("T")[0].split("-")[0] +
+            " " +
+            change.created.split("T")[1].split(".")[0],
+        });
+      }
+      // @ts-ignore
+      // if (countryInfo.name) {
+      //   payload.options.push({
+      //     // @ts-ignore
+      //     value: change.author.displayName +
+      //   });
+      // } else {
+      //   // @ts-ignore
+      //   throw new Error(`No name found for ID: ${countryInfo.id}`);
+      // }
+    }
 
-    setTodos([]);
-    setDeleteAllShowing(false);
-    setDeletingAll(false);
-  }
-
-  const onSubmit = (e) => {
-    e.preventDefault();
-    createTodo(input);
-    setInput('');
+    if (payload.options[0] != undefined) {
+      const options = {
+        method: "POST",
+        body: JSON.stringify(payload),
+      };
+      const response = await api
+        .asUser()
+        .requestJira(
+          `/rest/api/3/field/${ChangeLogsFieldData.id}/context/${data.values[0].id}/option`,
+          options
+        );
+      console.log("Add country field options response:", await response.json());
+    }
   };
 
-  useEffect(() => {
-    if (!todos) return;
-    if (!todos.find(todo => todo.isSaving || todo.isDeleting)) return;
+  // const createCustomField = async () => {
+  //   const payload = {
+  //     searcherKey:
+  //       "com.atlassian.jira.plugin.system.customfieldtypes:multiselectsearcher",
+  //     name: "Change Logs",
+  //     description: "Custom field for Change Logs",
+  //     type: "com.atlassian.jira.plugin.system.customfieldtypes:select",
+  //   };
+  //   const create_options = {
+  //     method: "POST",
+  //     body: JSON.stringify(payload),
+  //   };
+  //   const response_from_create = await api
+  //     .asUser()
+  //     .requestJira(`/rest/api/3/field`, create_options);
+  //   console.log("Create country field response:", response_from_create);
+  //   const ChangeLogsFieldData = await response_from_create.json();
 
-    Promise.all(
-      todos.map((todo) => {
-        if (todo.isSaving && !todo.id) {
-          return invoke('create', { label: todo.label, isChecked: false })
-        }
-        if (todo.isSaving && todo.id) {
-          return invoke('update', { id: todo.id, label: todo.label, isChecked: todo.isChecked })
-        }
-        if (todo.isDeleting && todo.id) {
-          return invoke('delete', { id: todo.id }).then(() => false);
-        }
-        return todo;
-      })
-    )
-    .then(saved => saved.filter(a => a))
-    .then(setTodos)
-  }, [todos]);
+  //   const fieldId = ChangeLogsFieldData.schema.customId;
 
-  if (!todos) {
-    return (
-      <Card>
-        <LoadingContainer>
-          <Spinner size="large" />
-        </LoadingContainer>
-      </Card>
-    );
-  }
-
-  const completedCount = todos.filter(todo => todo.isChecked).length;
-  const totalCount = todos.length;
-
-  const Rows = () => (
-    <Fragment>
-      {todos.map(({ id, label, isChecked, isSaving, isDeleting }, i) => {
-        const isSpinnerShowing = isSaving || isDeleting;
-
-        return (
-          <Row isChecked={isChecked} key={label}>
-            <Checkbox isChecked={isChecked} label={label} name={label} onChange={() => toggleTodo(id)} />
-            <Status>
-              {isSpinnerShowing ? <Spinner size="medium" /> : null}
-              {isChecked ? <Lozenge appearance="success">Done</Lozenge> : null}
-              <Button size="small" spacing="none" onClick={() => deleteTodo(id)}>
-                <IconContainer>
-                  <Icon>
-                    <CloseIcon />
-                  </Icon>
-                </IconContainer>
-              </Button>
-            </Status>
-          </Row>
-        );
-      })}
-    </Fragment>
-  );
-
-  const DeleteAll = () => isDeleteAllShowing ? (
-    <Button
-      appearance="danger"
-      spacing="compact"
-      isLoading={isDeletingAll}
-      isDisabled={isDeletingAll}
-      onClick={deleteAllTodos}
-    >
-      Delete All
-    </Button>
-  ) : (
-    <Button appearance="subtle" spacing="none" onClick={() => setDeleteAllShowing(true)}>
-      <IconContainer>
-        <Icon>
-          <TrashIcon />
-        </Icon>
-      </IconContainer>
-    </Button>
-  );
-
-  const CompletedLozenge = () => <Lozenge>{completedCount}/{totalCount} Completed</Lozenge>;
+  //   const add_default_options = {
+  //     method: "POST",
+  //   };
+  //   const response = await api
+  //     .asUser()
+  //     .requestJira(
+  //       `/rest/api/3/screens/addToDefault/customfield_${fieldId}`,
+  //       add_default_options
+  //     );
+  //   console.log(
+  //     "Add Custom Change Log field to default screen response:",
+  //     response
+  //   );
+  //   const responseData = await response.json();
+  //   console.log(" * responseData:", responseData);
+  // };
 
   return (
-    <Card>
-      <ScrollContainer>
-        <Rows />
-        <Row isCompact>
-          <Form onSubmit={onSubmit}>
-            <Textfield
-              appearance="subtle"
-              placeholder="Add a todo +"
-              value={input}
-              onChange={({ target }) => setInput(target.value)}
-            />
-          </Form>
-        </Row>
-      </ScrollContainer>
-      <SummaryFooter>
-        <SummaryCount>
-          <CompletedLozenge />
-        </SummaryCount>
-        <SummaryActions>
-          <DeleteAll />
-        </SummaryActions>
-      </SummaryFooter>
-    </Card>
+    <IssuePanel
+      actions={[<IssuePanelAction text="Export Logs" onClick={() => {}} />]}
+    >
+      <Changes Data={Data} />
+      <Fragment>
+        <Button
+          text="Export Change Logs to Custom Field"
+          onClick={exportData}
+          appearance="primary"
+        ></Button>
+        {ChangeLogsFieldData === undefined
+          ? new ChangelogFieldAdmin().render()
+          : null}
+      </Fragment>
+    </IssuePanel>
   );
 }
 
-export default App;
+export default render(<App />);

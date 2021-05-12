@@ -1,19 +1,21 @@
 modules:
   jira:issuePanel:
-    - key: todo-panel
-      resource: main
-      resolver:
-        function: resolver
-      title: Todos
+    - key: changes-panel
+      function: renderPanel
+      title: Changes
       viewportSize: medium
-      tooltip: Add a todo list
+      tooltip: Show Change Logs
       icon: https://developer.atlassian.com/platform/forge/images/issue-panel-icon.svg
+  jira:issueAction:
+    - key: export-changelogs
+      function: action
+      title: Export Change Logs
   function:
-    - key: resolver
-      handler: index.handler
-resources:
-  - key: main
-    path: static/spa/build
+    - key: renderPanel
+      handler: index.renderApp
+    - key: action
+      handler: index.action
 permissions:
   scopes:
-    - storage:app
+    - read:jira-work
+    - manage:jira-configuration
