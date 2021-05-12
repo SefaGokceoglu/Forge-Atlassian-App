@@ -49,3 +49,8 @@ forge install
 ```
 
 ## Usage
+
+- Open a issue panel 
+- Create Custom Field by using Create Change Log Field button
+- Associate Screens to The Change Log custom field at the settings
+- You can use Export Change Logs to Custom Field button to export change logs to Custom Field
