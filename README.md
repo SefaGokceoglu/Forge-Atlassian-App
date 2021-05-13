@@ -1,4 +1,4 @@
-# Forge Todo App
+# Forge Cahnge Logs App
 
 This project contains a Forge UI Kit app written in React that displays in a Jira issue panel.
 
